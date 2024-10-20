@@ -11,6 +11,7 @@ import java.util.concurrent.*;
 public class App {
     private static int MAX_CONNECTIONS;
     private static ExecutorService executorService;
+    private static ConnectionPool connectionPool;
 
     public static void main(String[] args) {
         Scanner sc = new Scanner(System.in);
@@ -21,10 +22,11 @@ public class App {
         System.out.println("No of Concurrent Requests on Server");
         int concurrentRequests = sc.nextInt();
 
+        initializeConnectionPool(poolSize);
 
         System.out.println("Time taken for Requests using Connection Pooling ");
         System.out.println("----------------------------------------------------");
-        concurrentRequestsWithPool(poolSize, concurrentRequests);
+        concurrentRequestsWithPool(concurrentRequests);
 
 
         System.out.println("Time taken for Requests without Pool");
@@ -32,14 +34,20 @@ public class App {
         concurrentRequests(concurrentRequests);
     }
 
-    public static void concurrentRequestsWithPool(int poolSize, int concurrentRequests) {
-        BlockingDeque<Connection> pool = initializePool(poolSize);
-        ConnectionPool cp = new ConnectionPool(pool);
+    public static void concurrentRequestsWithPool(int concurrentRequests) {
         executorService = Executors.newFixedThreadPool(concurrentRequests);
-
         Instant startTime = Instant.now();
+
         for (int i = 0; i < concurrentRequests; i++) {
-            executorService.submit(new DatabaseOperation(cp));
+            executorService.submit(() -> {
+                try {
+                    Connection conn = connectionPool.getDBConnection();
+                    Thread.sleep(1000);
+                    connectionPool.addConnectionBackToPool(conn);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
         executionTime(startTime);
     }
@@ -89,7 +97,8 @@ public class App {
         System.out.println("----------------------------------------------------");
         System.out.println('\n');
     }
-    private static BlockingDeque<Connection> initializePool(int poolSize) {
+
+    private static void initializeConnectionPool(int poolSize) {
         BlockingDeque<Connection> pool = new LinkedBlockingDeque<>(poolSize);
         for (int i = 0; i < poolSize; i++) {
             try {
@@ -98,6 +107,6 @@ public class App {
                 throw new RuntimeException(e);
             }
         }
-        return pool;
+        connectionPool = new ConnectionPool(pool);
     }
 }
